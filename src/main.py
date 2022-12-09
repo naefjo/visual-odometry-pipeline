@@ -7,7 +7,6 @@ from utils import *
 from vo_bootstrap import bootstrap_vo_pipeline
 
 
-# ds = 2 # % 0: KITTI, 1: Malaga, 2: parking
 dataset = DataSet.PARKING
 
 if dataset == DataSet.KITTI:
@@ -75,7 +74,7 @@ elif dataset == DataSet.MALAGA:
 
 elif dataset == DataSet.PARKING:
     img0 = cv2.imread(get_image_path(0, dataset), cv2.IMREAD_GRAYSCALE)
-    img1 = cv2.imread(get_image_path(1, dataset), cv2.IMREAD_GRAYSCALE)
+    img1 = cv2.imread(get_image_path(5, dataset), cv2.IMREAD_GRAYSCALE)
 
 else:
     raise NotImplementedError

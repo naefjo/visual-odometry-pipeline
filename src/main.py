@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 from structures import *
 from utils import *
-from vo_bootstrap import bootstrap_vo_pipeline
+from vo_bootstrap import bootstrapVoPipeline
 
 
 def main():
@@ -74,8 +74,12 @@ def main():
         pass
 
     elif dataset == DataSet.PARKING:
-        img0 = cv2.imread(get_image_path(bootstrap_frames[0], dataset), cv2.IMREAD_GRAYSCALE)
-        img1 = cv2.imread(get_image_path(bootstrap_frames[1], dataset), cv2.IMREAD_GRAYSCALE)
+        img0 = cv2.imread(
+            getImagePath(bootstrap_frames[0], dataset), cv2.IMREAD_GRAYSCALE
+        )
+        img1 = cv2.imread(
+            getImagePath(bootstrap_frames[1], dataset), cv2.IMREAD_GRAYSCALE
+        )
 
     else:
         raise NotImplementedError
@@ -85,12 +89,34 @@ def main():
     # cv2.imshow('', img1)
     # cv2.waitKey(0)
 
-    keypoints, estimated_pose, inliner_stats = bootstrap_vo_pipeline(img0, img1, K)
-    
-    
+    keypoints, landmarks_c0, T_c0_c1, inliner_stats = bootstrapVoPipeline(img0, img1, K)
+
+    T_I_c0 = np.eye(4)
+    T_I_c0[:3, -1:] = np.array([0, 0, 1]).reshape(3, 1)
+    T_I_c0 = T_I_c0 @ RxToHomogeneousTransform(-np.pi / 2)
+
+    T_I_c1 = T_I_c0 @ T_c0_c1
+
+    fig = plt.figure()
+    ax = fig.add_subplot(projection="3d")
+    landmarks_I = T_I_c0 @ landmarks_c0
+    ax.scatter3D(landmarks_I[0, :], landmarks_I[1, :], landmarks_I[2, :])
+    # ax.scatter3D(T_I_c0[0, -1], T_I_c0[1, -1], T_I_c0[2, -1], c="green")
+    # ax.scatter3D(T_I_c1[0, -1], T_I_c1[1, -1], T_I_c1[2, -1], c="red")
+
+    plotCoordinateSystemFromTransform(T_I_c0, ax)
+    plotCoordinateSystemFromTransform(T_I_c1, ax)
+
+    ax.set_xlim(-10, 20)
+    ax.set_ylim(-10, 20)
+    ax.set_zlim(-10, 20)
+    ax.set_xlabel("inertial x")
+    ax.set_ylabel("inertial y")
+    ax.set_zlabel("inertial z")
+    plt.waitforbuttonpress(-1)
     # Continuous operation
     # range = (bootstrap_frames(2)+1):last_frame;
-    for i in range(bootstrap_frames[1],last_frame):
+    for i in range(bootstrap_frames[1], last_frame):
         pass
     #     fprintf('\n\nProcessing frame %d\n=====================\n', i);
     #     if ds == 0

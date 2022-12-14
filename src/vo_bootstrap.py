@@ -6,12 +6,16 @@ from numpy.typing import NDArray
 
 from structures import *
 from utils import *
+from feature_detector import SIFTKeypointDetectorAndMatcher
+
+DEBUG_PLOTS = False
 
 
 def bootstrapVoPipeline(
     img0: cv2.Mat,
     img1: cv2.Mat,
     K: NDArray,
+    feature_detector: SIFTKeypointDetectorAndMatcher,
 ) -> Tuple[Tuple[List[cv2.KeyPoint], NDArray], NDArray, Tuple[int, NDArray]]:
     """
     Bootstraps the Visual Odometry pipeline,
@@ -37,90 +41,109 @@ def bootstrapVoPipeline(
 
     """
 
-    sift = cv2.SIFT_create()
+    keypoints_img0, keypoint_descriptor_img0 = feature_detector.detect_keypoints(img0)
+    keypoints_img1, keypoint_descriptor_img1 = feature_detector.detect_keypoints(img1)
 
-    keypoints_img0, keypoint_descriptor_img0 = sift.detectAndCompute(img0, None)
-    keypoints_img1, keypoint_descriptor_img1 = sift.detectAndCompute(img1, None)
-
-    FLANN_INDEX_KDTREE = 1
-    index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-    search_params = dict(checks=50)
-    flann_matcher = (
-        cv2.FlannBasedMatcher_create()
-    )  # FlannBasedMatcher(index_params, search_params)
-    matched_keypoints = flann_matcher.knnMatch(
-        keypoint_descriptor_img0, keypoint_descriptor_img1, k=2
-    )
-
-    good_matches = []
-    # arranged according to [Nx2]
-    points_img0 = []
-    points_img1 = []
-
-    for (match_1, match_2) in matched_keypoints:
-        if match_1.distance < 0.8 * match_2.distance:
-            good_matches.append(match_1)
-            points_img0.append(keypoints_img0[match_1.queryIdx].pt)
-            points_img1.append(keypoints_img1[match_1.trainIdx].pt)
-
-    points_img0 = np.int32(points_img0)
-    points_img1 = np.int32(points_img1)
-
-    essential_matrix, inlier_mask = cv2.findEssentialMat(
-        points_img0,
-        points_img1,
-        K,
-        method=cv2.RANSAC,
-        prob=0.99,
-    )
-
-    drawImagesWithCorrespondingKeypoints(
-        img0,
-        img1,
+    (
+        matches,
+        matched_keypoints_image_0,
+        matched_keypoints_image_1,
+        matched_keypoint_descriptors_image_1,
+    ) = feature_detector.MatchKeypointsAndDescriptors(
         keypoints_img0,
         keypoints_img1,
-        good_matches,
+        keypoint_descriptor_img0,
+        keypoint_descriptor_img1,
     )
+
+    kp_coords_img0 = feature_detector.getImageCoordinatesArray(
+        matched_keypoints_image_0
+    )
+    kp_coords_img1 = feature_detector.getImageCoordinatesArray(
+        matched_keypoints_image_1
+    )
+
+    if DEBUG_PLOTS:
+        drawImagesWithCorrespondingKeypoints(
+            img0,
+            img1,
+            keypoints_img0,
+            keypoints_img1,
+            matches,
+        )
+
+    essential_matrix, inlier_mask = cv2.findEssentialMat(
+        kp_coords_img0,
+        kp_coords_img1,
+        K,
+        method=cv2.RANSAC,
+        prob=0.999,
+        threshold=0.3,
+    )
+    inlier_mask = inlier_mask.reshape(-1).astype(bool)
+    kp_coords_img0 = kp_coords_img0[inlier_mask, :]
+    kp_coords_img1 = kp_coords_img1[inlier_mask, :]
+    # matched_keypoints_image_1 = matched_keypoints_image_1[inlier_mask]
+    matched_keypoint_descriptors_image_1 = matched_keypoint_descriptors_image_1[
+        inlier_mask, :
+    ]
 
     # [recovered_rotation, recovered_position] = T_{1,0}, i.e. we convert vectors from the first
     # camera frame into vectors in the second camera frame.
     # NOTE(@naefjo): translation is up to scale/unit length
     num_inliers, recovered_rotation, recovered_position, inlier_mask = cv2.recoverPose(
         essential_matrix,
-        points_img0,
-        points_img1,
+        kp_coords_img0,
+        kp_coords_img1,
         K,
-        inlier_mask,
     )
 
-    T_img1_img0 = np.eye(4)
-    T_img1_img0[:3, :3] = recovered_rotation
-    T_img1_img0[:3, -1:] = recovered_position.reshape(3, 1)
-    # T_img0_img1 = np.linalg.inv(T_img1_img0)
+    # TODO: inlier mask of recover pose ahs only entries 255....
+    inlier_mask = inlier_mask.reshape(-1).astype(bool)
+    kp_coords_img0 = kp_coords_img0[inlier_mask, :]
+    kp_coords_img1 = kp_coords_img1[inlier_mask, :]
+    # matched_keypoints_image_1 = matched_keypoints_image_1[inlier_mask]
+    matched_keypoint_descriptors_image_1 = matched_keypoint_descriptors_image_1[
+        inlier_mask, :
+    ]
+
+    # Construct homogeneous transformation of estimated pose
+    T_img1_img0 = computeTransformation(recovered_rotation, recovered_position)
     T_img0_img1 = invertSE3Matrix(T_img1_img0)
 
-    projection_matrix_0 = (K @ np.hstack((np.eye(3), np.zeros((3, 1))))).astype(float)
-    projection_matrix_1 = (K @ (T_img1_img0[:3, :])).astype(float)
-    projection_points_0 = (points_img0.T).astype(float)
-    projection_points_1 = (points_img1.T).astype(float)
+    triangulation_parameters = {
+        "projMatr1": (K @ np.hstack((np.eye(3), np.zeros((3, 1))))).astype(float),
+        "projMatr2": (K @ (T_img1_img0[:3, :])).astype(float),
+        "projPoints1": (kp_coords_img0.T).astype(float),
+        "projPoints2": (kp_coords_img1.T).astype(float),
+    }
 
-    landmarks = cv2.triangulatePoints(
-        projMatr1=projection_matrix_0,
-        projMatr2=projection_matrix_1,
-        projPoints1=projection_points_0,
-        projPoints2=projection_points_1,
-    )
+    landmarks = cv2.triangulatePoints(**triangulation_parameters)
 
     # Normalize last coordinate?
     # TODO(@naefjo): figure out if this is correct or no.
     landmarks /= landmarks[3, :]
-    landmark_distance_mask = np.linalg.norm(landmarks, axis=0) < 75
-    landmark_z_direction_mask = landmarks[2, :] > 0
-    landmarks = landmarks[:, landmark_distance_mask & landmark_z_direction_mask]
+
+    # filter out points which are beyond a certain threshold.
+    # landmark_distance_mask = np.linalg.norm(landmarks, axis=0) < 75
+    # sum_masked_distance = np.sum(~landmark_distance_mask)
+    # landmarks = landmarks[:, landmark_distance_mask]
+
+    # Filter out points which are behind the camera.
+    # landmark_z_direction_mask = landmarks[2, :] > 0
+    # sum_masked_landmarks_z = np.sum(~landmark_z_direction_mask)
+    # landmarks = landmarks[:, landmark_z_direction_mask]
 
     return (
-        (keypoints_img1, keypoint_descriptor_img1),
+        (kp_coords_img1, matched_keypoint_descriptors_image_1),
         landmarks,
         T_img0_img1,
         (num_inliers, inlier_mask),
     )
+
+
+def computeTransformation(rotation, translation):
+    T_img1_img0 = np.eye(4)
+    T_img1_img0[:3, :3] = rotation
+    T_img1_img0[:3, -1:] = translation.reshape(3, 1)
+    return T_img1_img0

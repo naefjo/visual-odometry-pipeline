@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from structures import *
 from utils import *
 from vo_bootstrap import bootstrapVoPipeline
+from vo_continuous_operation import processFrame
+from feature_detector import SIFTKeypointDetectorAndMatcher
 
 
 def main():
@@ -88,24 +90,28 @@ def main():
     # cv2.waitKey(0)
     # cv2.imshow('', img1)
     # cv2.waitKey(0)
+    sift_params = {}
+    feature_detector = SIFTKeypointDetectorAndMatcher(sift_params)
 
-    keypoints, landmarks_c0, T_c0_c1, inliner_stats = bootstrapVoPipeline(img0, img1, K)
+    keypoints_prev, landmarks_c0, T_c0_c1, inliner_stats = bootstrapVoPipeline(
+        img0, img1, K, feature_detector
+    )
 
+    # Set world coordinate frame arbitrarily for visualization
     T_I_c0 = np.eye(4)
     T_I_c0[:3, -1:] = np.array([0, 0, 1]).reshape(3, 1)
     T_I_c0 = T_I_c0 @ RxToHomogeneousTransform(-np.pi / 2)
 
-    T_I_c1 = T_I_c0 @ T_c0_c1
+    trajectory = []
+    trajectory.append(T_I_c0)
+    trajectory.append(T_I_c0 @ T_c0_c1)
 
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
     landmarks_I = T_I_c0 @ landmarks_c0
     ax.scatter3D(landmarks_I[0, :], landmarks_I[1, :], landmarks_I[2, :])
-    # ax.scatter3D(T_I_c0[0, -1], T_I_c0[1, -1], T_I_c0[2, -1], c="green")
-    # ax.scatter3D(T_I_c1[0, -1], T_I_c1[1, -1], T_I_c1[2, -1], c="red")
 
-    plotCoordinateSystemFromTransform(T_I_c0, ax)
-    plotCoordinateSystemFromTransform(T_I_c1, ax)
+    plotTrajectory(ax, trajectory)
 
     ax.set_xlim(-10, 20)
     ax.set_ylim(-10, 20)
@@ -116,26 +122,24 @@ def main():
     plt.waitforbuttonpress(-1)
     # Continuous operation
     # range = (bootstrap_frames(2)+1):last_frame;
-    for i in range(bootstrap_frames[1], last_frame):
-        pass
-    #     fprintf('\n\nProcessing frame %d\n=====================\n', i);
-    #     if ds == 0
-    #         image = imread([kitti_path '/05/image_0/' sprintf('%06d.png',i)]);
-    #     elseif ds == 1
-    #         image = rgb2gray(imread([malaga_path ...
-    #             '/malaga-urban-dataset-extract-07_rectified_800x600_Images/' ...
-    #             left_images(i).name]));
-    #     elseif ds == 2
-    #         image = im2uint8(rgb2gray(imread([parking_path ...
-    #             sprintf('/images/img_%05d.png',i)])));
-    #     else
-    #         assert(false);
-    #     end
-    #     % Makes sure that plots refresh.
-    #     pause(0.01);
+    for image_index in range(bootstrap_frames[1], last_frame):
+        print("\n\nProcessing frame {}\n=====================\n")
+        image = getContinuousOperationImage(image_index, dataset)
 
-    #     prev_img = image;
-    # end
+        out = processFrame(
+            image,
+            K,
+            keypoints_prev[0],
+            keypoints_prev[1],
+            landmarks_I,
+            trajectory[-1],
+            feature_detector,
+        )
+
+        # Makes sure that plots refresh.
+        plt.pause(0.01)
+
+        prev_img = image
 
 
 if __name__ == "__main__":

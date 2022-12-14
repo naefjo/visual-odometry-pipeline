@@ -13,6 +13,23 @@ def getImagePath(image_index: int, dataset: DataSet) -> str:
     return data_path[dataset] + "images/img_" + str(image_index).zfill(5) + ".png"
 
 
+def getContinuousOperationImage(image_index, dataset):
+    if dataset == DataSet.KITTI:
+        raise NotImplementedError
+        # image = imread([kitti_path '/05/image_0/' sprintf('%06d.png',i)]);
+
+    if dataset == DataSet.MALAGA:
+        raise NotImplementedError
+        # image = rgb2gray(imread([malaga_path ...
+        #     '/malaga-urban-dataset-extract-07_rectified_800x600_Images/' ...
+        #     left_images(i).name]));
+
+    if dataset == DataSet.PARKING:
+        return cv2.imread(getImagePath(image_index, dataset), cv2.IMREAD_GRAYSCALE)
+
+    raise NotImplementedError
+
+
 def invertSE3Matrix(transformation_matrix: NDArray) -> NDArray:
     """
     Invert a homogeneous transformation matrix belonging to SE(3).
@@ -68,7 +85,7 @@ def RxToHomogeneousTransform(angle):
             [1, 0, 0, 0],
             [0, np.cos(angle), -np.sin(angle), 0],
             [0, np.sin(angle), np.cos(angle), 0],
-            [0 ,0, 0, 1],
+            [0, 0, 0, 1],
         ]
     )
 
@@ -79,7 +96,7 @@ def RyToHomogeneousTransform(angle):
             [np.cos(angle), 0, np.sin(angle), 0],
             [0, 1, 0, 0],
             [-np.sin(angle), 0, np.cos(angle), 0],
-            [0 ,0, 0, 1],
+            [0, 0, 0, 1],
         ]
     )
 
@@ -90,16 +107,37 @@ def RzToHomogeneousTransform(angle):
             [np.cos(angle), -np.sin(angle), 0, 0],
             [np.sin(angle), np.cos(angle), 0, 0],
             [0, 0, 1, 0],
-            [0 ,0, 0, 1],
+            [0, 0, 0, 1],
         ]
     )
 
-def plotCoordinateSystemFromTransform(transform, ax):
-    start = transform[:3,-1]
-    x_unit_vec = transform[:3,0]
-    y_unit_vec = transform[:3,1]
-    z_unit_vec = transform[:3,2]
 
-    ax.plot([start[0], start[0]+x_unit_vec[0]], [start[1], start[1]+x_unit_vec[1]], [start[2], start[2]+x_unit_vec[2]], 'r')
-    ax.plot([start[0], start[0]+y_unit_vec[0]], [start[1], start[1]+y_unit_vec[1]], [start[2], start[2]+y_unit_vec[2]], 'g')
-    ax.plot([start[0], start[0]+z_unit_vec[0]], [start[1], start[1]+z_unit_vec[1]], [start[2], start[2]+z_unit_vec[2]], 'b')
+def plotCoordinateSystemFromTransform(transform, ax, scale=1):
+    start = transform[:3, -1]
+    x_unit_vec = transform[:3, 0]
+    y_unit_vec = transform[:3, 1]
+    z_unit_vec = transform[:3, 2]
+
+    ax.plot(
+        [start[0], start[0] + scale * x_unit_vec[0]],
+        [start[1], start[1] + scale * x_unit_vec[1]],
+        [start[2], start[2] + scale * x_unit_vec[2]],
+        "r",
+    )
+    ax.plot(
+        [start[0], start[0] + scale * y_unit_vec[0]],
+        [start[1], start[1] + scale * y_unit_vec[1]],
+        [start[2], start[2] + scale * y_unit_vec[2]],
+        "g",
+    )
+    ax.plot(
+        [start[0], start[0] + scale * z_unit_vec[0]],
+        [start[1], start[1] + scale * z_unit_vec[1]],
+        [start[2], start[2] + scale * z_unit_vec[2]],
+        "b",
+    )
+
+
+def plotTrajectory(ax, trajectory):
+    for pose in trajectory:
+        plotCoordinateSystemFromTransform(pose, ax)

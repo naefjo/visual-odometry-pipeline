@@ -34,6 +34,7 @@ def bootstrapVoPipeline(
     Returns:
         keypoints: Tuple containing keypoints in img1 and their corresponding descriptor.
         landmarks: 4xN array of triangulated landmarks from keypoints between img0 and img1.
+          Landmark at index i corresponds to keypoint at index i.
         estimated_pose: SE(3) transformation matrix which expresses
           the coordinate system of camera 1 in the coordinate system of camera 0.
           NOTE: translation is only up to scale
@@ -80,10 +81,11 @@ def bootstrapVoPipeline(
         prob=0.999,
         threshold=0.3,
     )
+
     inlier_mask = inlier_mask.reshape(-1).astype(bool)
     kp_coords_img0 = kp_coords_img0[inlier_mask, :]
     kp_coords_img1 = kp_coords_img1[inlier_mask, :]
-    # matched_keypoints_image_1 = matched_keypoints_image_1[inlier_mask]
+    matched_keypoints_image_1 = matched_keypoints_image_1[inlier_mask]
     matched_keypoint_descriptors_image_1 = matched_keypoint_descriptors_image_1[
         inlier_mask, :
     ]
@@ -102,13 +104,15 @@ def bootstrapVoPipeline(
     inlier_mask = inlier_mask.reshape(-1).astype(bool)
     kp_coords_img0 = kp_coords_img0[inlier_mask, :]
     kp_coords_img1 = kp_coords_img1[inlier_mask, :]
-    # matched_keypoints_image_1 = matched_keypoints_image_1[inlier_mask]
+    matched_keypoints_image_1 = matched_keypoints_image_1[inlier_mask]
     matched_keypoint_descriptors_image_1 = matched_keypoint_descriptors_image_1[
         inlier_mask, :
     ]
 
     # Construct homogeneous transformation of estimated pose
-    T_img1_img0 = computeTransformation(recovered_rotation, recovered_position)
+    T_img1_img0 = computeHomogeneousTransformationMatrix(
+        recovered_rotation, recovered_position
+    )
     T_img0_img1 = invertSE3Matrix(T_img1_img0)
 
     triangulation_parameters = {
@@ -135,15 +139,8 @@ def bootstrapVoPipeline(
     # landmarks = landmarks[:, landmark_z_direction_mask]
 
     return (
-        (kp_coords_img1, matched_keypoint_descriptors_image_1),
+        (matched_keypoints_image_1, matched_keypoint_descriptors_image_1),
         landmarks,
         T_img0_img1,
         (num_inliers, inlier_mask),
     )
-
-
-def computeTransformation(rotation, translation):
-    T_img1_img0 = np.eye(4)
-    T_img1_img0[:3, :3] = rotation
-    T_img1_img0[:3, -1:] = translation.reshape(3, 1)
-    return T_img1_img0

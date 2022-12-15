@@ -30,6 +30,13 @@ def getContinuousOperationImage(image_index, dataset):
     raise NotImplementedError
 
 
+def computeHomogeneousTransformationMatrix(rotation, translation):
+    T_img1_img0 = np.eye(4)
+    T_img1_img0[:3, :3] = rotation
+    T_img1_img0[:3, -1:] = translation.reshape(3, 1)
+    return T_img1_img0
+
+
 def invertSE3Matrix(transformation_matrix: NDArray) -> NDArray:
     """
     Invert a homogeneous transformation matrix belonging to SE(3).

@@ -16,7 +16,7 @@ def bootstrapVoPipeline(
     img1: cv2.Mat,
     K: NDArray,
     feature_detector: SIFTKeypointDetectorAndMatcher,
-) -> Tuple[Tuple[List[cv2.KeyPoint], NDArray], NDArray, Tuple[int, NDArray]]:
+) -> ImageFeatures:  # Tuple[Tuple[List[cv2.KeyPoint], NDArray], NDArray, Tuple[int, NDArray]]:
     """
     Bootstraps the Visual Odometry pipeline,
 
@@ -79,7 +79,7 @@ def bootstrapVoPipeline(
         K,
         method=cv2.RANSAC,
         prob=0.999,
-        threshold=0.3,
+        threshold=1.0,
     )
 
     inlier_mask = inlier_mask.reshape(-1).astype(bool)
@@ -138,9 +138,14 @@ def bootstrapVoPipeline(
     # sum_masked_landmarks_z = np.sum(~landmark_z_direction_mask)
     # landmarks = landmarks[:, landmark_z_direction_mask]
 
-    return (
+    bootstrap_image_features = ImageFeatures(
         (matched_keypoints_image_1, matched_keypoint_descriptors_image_1),
         landmarks,
         T_img0_img1,
         (num_inliers, inlier_mask),
+        (keypoints_img1, keypoint_descriptor_img1),
     )
+
+    bootstrap_image_features.change_transform()
+
+    return bootstrap_image_features
